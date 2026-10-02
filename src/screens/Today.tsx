@@ -19,12 +19,20 @@ type Props = {
   onDeleteEntry: (id: string) => void;
 };
 
+// Bar fill, 0..1; no bar without a goal.
+const fraction = (value: number, goal: number | undefined) => (goal && goal > 0 ? Math.min(1, value / goal) : 0);
+
 export default function Today(p: Props) {
   const [editing, setEditing] = useState<{ id: string; grams: string } | null>(null);
   const totals = dailyTotals(p.entries);
   const status = goalStatus(p.goals, totals);
   const isToday = p.day === p.today;
   const editGrams = editing ? parseNum(editing.grams) : undefined;
+  const macros = [
+    { label: 'Carbs', value: totals.carbs_g, goal: p.goals.carbs_g },
+    { label: 'Fat', value: totals.fat_g, goal: p.goals.fat_g },
+    { label: status.proteinMet ? 'Protein ✓' : 'Protein', value: totals.protein_g, goal: p.goals.protein_g },
+  ];
 
   return (
     <main className="screen">
@@ -46,28 +54,36 @@ export default function Today(p: Props) {
         </button>
       )}
 
-      <section className={'card protein' + (status.proteinMet ? ' good' : '')}>
-        <div className="label">Protein</div>
-        <div className="hero">
-          {int(totals.protein_g)}
-          <span className="unit"> / {int(p.goals.protein_g)} g</span>
-        </div>
-        <div className="track">
-          <div className="fill" style={{ width: `${status.proteinFraction * 100}%` }} />
-        </div>
-        <div className="sub">{status.proteinMet ? '✓ Goal hit' : `${int(status.proteinToGo)} g to go`}</div>
-      </section>
-
       <section className={'card' + (status.kcalOver ? ' bad' : '')}>
         <div className="label">Calories</div>
         <div className="row">
-          <div className="big">
-            {status.kcalOver ? `${int(-status.kcalLeft)} kcal over` : `${int(status.kcalLeft)} kcal left`}
+          <div>
+            <span className="big">{int(totals.kcal)} cal</span>
+            <span className="muted"> / {int(p.goals.kcal)}</span>
           </div>
-          <div className="muted">
-            {int(totals.kcal)} / {int(p.goals.kcal)}
+          <div>
+            <span className="big">{int(Math.abs(status.kcalLeft))}</span>
+            <span className="muted"> {status.kcalOver ? 'over' : 'left'}</span>
           </div>
         </div>
+        <div className="track">
+          <div className="fill" style={{ width: `${fraction(totals.kcal, p.goals.kcal) * 100}%` }} />
+        </div>
+      </section>
+
+      <section className="card macros">
+        {macros.map((m) => (
+          <div className="macro" key={m.label}>
+            <div className="label">{m.label}</div>
+            <div>
+              <span className="big">{int(m.value)} g</span>
+              {m.goal ? <span className="muted"> / {int(m.goal)}</span> : null}
+            </div>
+            <div className="track">
+              <div className="fill" style={{ width: `${fraction(m.value, m.goal) * 100}%` }} />
+            </div>
+          </div>
+        ))}
       </section>
 
       <button className="primary scan" onClick={p.onScan}>
@@ -82,6 +98,7 @@ export default function Today(p: Props) {
         </button>
       </div>
 
+      <h2 className="label heading">Logged items</h2>
       <ul className="list">
         {p.entries.length === 0 && <li className="muted empty">Nothing logged.</li>}
         {p.entries.map((e) =>

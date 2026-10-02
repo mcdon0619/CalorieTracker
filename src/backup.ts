@@ -49,7 +49,12 @@ export function parseBackup(text: string): Backup {
     exportedAt: typeof json.exportedAt === 'string' ? json.exportedAt : '',
     foods: foods as Food[],
     log: log as LogEntry[],
-    goals: { kcal: goals.kcal, protein_g: goals.protein_g },
+    goals: {
+      kcal: goals.kcal,
+      protein_g: goals.protein_g,
+      ...(isNum(goals.carbs_g) && { carbs_g: goals.carbs_g }),
+      ...(isNum(goals.fat_g) && { fat_g: goals.fat_g }),
+    },
     recipes: validRecipes as Recipe[],
   };
 }

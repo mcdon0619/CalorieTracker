@@ -10,6 +10,8 @@ describe('backup', () => {
   it('round-trips an export', () => {
     const backup = buildBackup(data, 0);
     expect(parseBackup(JSON.stringify(backup))).toEqual(backup);
+    const withMacros = buildBackup({ ...data, goals: { ...data.goals, carbs_g: 250, fat_g: 70 } }, 0);
+    expect(parseBackup(JSON.stringify(withMacros)).goals).toEqual({ kcal: 2000, protein_g: 150, carbs_g: 250, fat_g: 70 });
   });
 
   it('rejects files that are not exports', () => {

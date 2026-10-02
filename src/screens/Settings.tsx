@@ -15,6 +15,8 @@ type Props = {
 export default function Settings({ data, onSaveGoals, onImport, onBack }: Props) {
   const [kcal, setKcal] = useState(String(data.goals.kcal));
   const [protein, setProtein] = useState(String(data.goals.protein_g));
+  const [carbs, setCarbs] = useState(String(data.goals.carbs_g ?? ''));
+  const [fat, setFat] = useState(String(data.goals.fat_g ?? ''));
   const [message, setMessage] = useState<{ text: string; bad?: boolean }>();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -44,6 +46,8 @@ export default function Settings({ data, onSaveGoals, onImport, onBack }: Props)
       await onImport(backup);
       setKcal(String(backup.goals.kcal));
       setProtein(String(backup.goals.protein_g));
+      setCarbs(String(backup.goals.carbs_g ?? ''));
+      setFat(String(backup.goals.fat_g ?? ''));
       setMessage({ text: 'Imported.' });
     } catch (e) {
       setMessage({ text: e instanceof Error ? e.message : 'Import failed.', bad: true });
@@ -61,7 +65,15 @@ export default function Settings({ data, onSaveGoals, onImport, onBack }: Props)
         onSubmit={async (e) => {
           e.preventDefault();
           if (goals.kcal === undefined || goals.protein_g === undefined) return;
-          await onSaveGoals({ kcal: goals.kcal, protein_g: goals.protein_g });
+          // Blank or 0 carbs/fat means no target for that macro.
+          const carbs_g = parseNum(carbs);
+          const fat_g = parseNum(fat);
+          await onSaveGoals({
+            kcal: goals.kcal,
+            protein_g: goals.protein_g,
+            ...(carbs_g ? { carbs_g } : {}),
+            ...(fat_g ? { fat_g } : {}),
+          });
           setMessage({ text: 'Goals saved.' });
         }}
       >
@@ -72,6 +84,14 @@ export default function Settings({ data, onSaveGoals, onImport, onBack }: Props)
         <label className="field">
           Daily calorie limit (kcal)
           <input inputMode="decimal" value={kcal} onChange={(e) => setKcal(e.target.value)} />
+        </label>
+        <label className="field">
+          Daily carbs target (g, optional)
+          <input inputMode="decimal" value={carbs} onChange={(e) => setCarbs(e.target.value)} />
+        </label>
+        <label className="field">
+          Daily fat target (g, optional)
+          <input inputMode="decimal" value={fat} onChange={(e) => setFat(e.target.value)} />
         </label>
         <button className="primary" type="submit" disabled={!goalsValid}>
           Save goals

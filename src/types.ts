@@ -56,6 +56,7 @@ export type LogEntry = RecipeItem & {
   loggedAt: number; // epoch ms
 };
 
-export type Goals = { kcal: number; protein_g: number };
+// Calories and protein are always set; carbs and fat targets are optional.
+export type Goals = { kcal: number; protein_g: number; carbs_g?: number; fat_g?: number };
 
 export type Recipe = { id: string; name: string; items: { foodBarcode: string; grams: number }[] };

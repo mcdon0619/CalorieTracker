@@ -156,6 +156,36 @@ button.link {
   border-color: var(--accent);
 }
 
+.card.bad .fill {
+  background: var(--bad);
+}
+
+.card.macros {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.macro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.macro .big {
+  font-size: 1.15rem;
+}
+
+.macro .track {
+  height: 8px;
+}
+
+.heading {
+  margin: 8px 0 0;
+  font-weight: 600;
+}
+
 .label {
   color: var(--muted);
   font-size: 0.8rem;
