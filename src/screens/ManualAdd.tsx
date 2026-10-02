@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { dec, parseNum } from '../format';
+import { dec, dec2, parseNum } from '../format';
 import { draftToFood, toPer100g } from '../nutrition';
 import type { Food, FoodDraft, Per100g } from '../types';
 
@@ -7,6 +7,7 @@ type Props = {
   draft: FoodDraft;
   notice?: string;
   onSave: (food: Food) => void;
+  onRefresh?: () => void; // re-read this barcode from Open Food Facts
   onBack: () => void;
 };
 
@@ -21,17 +22,20 @@ const NUTRIENT_FIELDS: { key: keyof Per100g; label: string; required?: boolean }
 ];
 
 const show = (v: number | undefined) => (v === undefined ? '' : dec(v));
+const EMPTY_UNIT = { name: '', grams: '' };
 
-export default function ManualAdd({ draft, notice, onSave, onBack }: Props) {
+export default function ManualAdd({ draft, notice, onSave, onRefresh, onBack }: Props) {
   const [name, setName] = useState(draft.name ?? '');
   const [brand, setBrand] = useState(draft.brand ?? '');
   const [basis, setBasis] = useState('100');
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(NUTRIENT_FIELDS.map((f) => [f.key, show(draft.per100g?.[f.key])])),
   );
-  const [serving, setServing] = useState(show(draft.servingSize_g));
-  const [servingName, setServingName] = useState(draft.servingName ?? '');
-  const [pack, setPack] = useState(show(draft.packageSize_g));
+  const [units, setUnits] = useState(() =>
+    draft.servings?.length ? draft.servings.map((u) => ({ name: u.name, grams: dec2(u.grams) })) : [EMPTY_UNIT],
+  );
+  const setUnit = (index: number, patch: Partial<typeof EMPTY_UNIT>) =>
+    setUnits(units.map((u, i) => (i === index ? { ...u, ...patch } : u)));
 
   const basisGrams = parseNum(basis);
   const entered: Partial<Per100g> = {};
@@ -44,9 +48,8 @@ export default function ManualAdd({ draft, notice, onSave, onBack }: Props) {
       name,
       brand,
       per100g: toPer100g(entered, basisGrams ?? 0),
-      servingSize_g: parseNum(serving),
-      servingName,
-      packageSize_g: parseNum(pack),
+      // A weight with no name is still a usable unit.
+      servings: units.map((u) => ({ name: u.name.trim() || 'serving', grams: parseNum(u.grams) ?? 0 })),
     },
     draft.barcode ?? `custom-${crypto.randomUUID()}`,
   );
@@ -89,14 +92,38 @@ export default function ManualAdd({ draft, notice, onSave, onBack }: Props) {
           </label>
         ))}
 
-        <label className="field">
-          Weight of one serving / piece (g, optional)
-          <input inputMode="decimal" value={serving} onChange={(e) => setServing(e.target.value)} />
-        </label>
-        <label className="field">
-          One serving is called (optional, e.g. egg, slice)
-          <input value={servingName} onChange={(e) => setServingName(e.target.value)} />
-        </label>
+        <div className="field">
+          Serving sizes (optional). The first is the default.
+          {units.map((u, i) => (
+            <div className="row" key={i}>
+              <input
+                className="grow"
+                placeholder="e.g. egg, 3 links"
+                aria-label={`Serving ${i + 1} name`}
+                value={u.name}
+                onChange={(e) => setUnit(i, { name: e.target.value })}
+              />
+              <input
+                className="grams"
+                inputMode="decimal"
+                placeholder="g"
+                aria-label={`Serving ${i + 1} weight in grams`}
+                value={u.grams}
+                onChange={(e) => setUnit(i, { grams: e.target.value })}
+              />
+              <button
+                type="button"
+                aria-label={`Remove serving ${i + 1}`}
+                onClick={() => setUnits(units.length > 1 ? units.filter((_, j) => j !== i) : [EMPTY_UNIT])}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button type="button" onClick={() => setUnits([...units, EMPTY_UNIT])}>
+            + Add serving size
+          </button>
+        </div>
 
         <details>
           <summary>More (optional)</summary>
@@ -110,12 +137,13 @@ export default function ManualAdd({ draft, notice, onSave, onBack }: Props) {
               />
             </label>
           ))}
-          <label className="field">
-            Package size (g)
-            <input inputMode="decimal" value={pack} onChange={(e) => setPack(e.target.value)} />
-          </label>
-          {draft.barcode && !draft.barcode.startsWith('custom-') && (
-            <p className="muted">Barcode: {draft.barcode}</p>
+          {onRefresh && (
+            <>
+              <p className="muted">Barcode: {draft.barcode}</p>
+              <button type="button" onClick={onRefresh}>
+                Refresh from Open Food Facts
+              </button>
+            </>
           )}
         </details>
 

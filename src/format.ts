@@ -8,5 +8,8 @@ export function parseNum(s: string): number | undefined {
 
 export const int = (v: number) => Math.round(v).toLocaleString();
 
+// Up to two decimals, for values that get parsed back (form fields).
+export const dec2 = (v: number) => String(Math.round(v * 100) / 100);
+
 // Up to one decimal, without a trailing ".0".
 export const dec = (v: number) => String(Math.round(v * 10) / 10);

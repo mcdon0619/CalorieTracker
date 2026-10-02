@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildMeal,
   dailyTotals,
   draftToFood,
   goalStatus,
   makeEntry,
+  makeItem,
+  migrateFood,
   normalizeBarcode,
   nutritionForGrams,
-  portionShortcuts,
+  portionLabel,
   rescaleEntry,
   toPer100g,
+  unitLabel,
+  validServings,
 } from './nutrition';
 import type { Food } from './types';
 
@@ -16,8 +21,10 @@ const oats: Food = {
   barcode: '123',
   name: 'Oats',
   per100g: { kcal: 380, protein_g: 13, carbs_g: 60, fat_g: 7, sugar_g: 1, fiber_g: 10, sodium_mg: 5 },
-  servingSize_g: 40,
-  packageSize_g: 500,
+  servings: [
+    { name: 'serving', grams: 40 },
+    { name: 'package', grams: 500 },
+  ],
 };
 
 describe('nutritionForGrams', () => {
@@ -46,25 +53,40 @@ describe('nutritionForGrams', () => {
   });
 });
 
-describe('portionShortcuts', () => {
-  it('converts serving and package shortcuts to grams', () => {
-    expect(portionShortcuts(oats)).toEqual([
-      { label: '½ serving', grams: 20 },
-      { label: '1 serving', grams: 40 },
-      { label: '2 servings', grams: 80 },
-      { label: '½ package', grams: 250 },
-      { label: 'Whole package', grams: 500 },
-    ]);
+describe('serving units', () => {
+  it('offers the units a food has', () => {
+    expect(validServings(oats)).toEqual(oats.servings);
   });
 
-  it('offers no shortcut without a reference weight', () => {
-    expect(portionShortcuts({})).toEqual([]);
-    expect(portionShortcuts({ servingSize_g: 0, packageSize_g: NaN })).toEqual([]);
+  it('offers no unit without a reference weight', () => {
+    expect(validServings({})).toEqual([]);
+    expect(
+      validServings({
+        servings: [
+          { name: 'serving', grams: 0 },
+          { name: 'package', grams: NaN },
+          { name: '  ', grams: 50 },
+        ],
+      }),
+    ).toEqual([]);
   });
 
-  it('offers only the shortcuts whose reference exists', () => {
-    expect(portionShortcuts({ packageSize_g: 200 }).map((s) => s.label)).toEqual(['½ package', 'Whole package']);
-    expect(portionShortcuts({ servingSize_g: 30 }).every((s) => s.label.includes('serving'))).toBe(true);
+  it('trims names and drops duplicates', () => {
+    expect(
+      validServings({
+        servings: [
+          { name: ' egg ', grams: 50 },
+          { name: 'Egg', grams: 60 },
+        ],
+      }),
+    ).toEqual([{ name: 'egg', grams: 50 }]);
+  });
+
+  it('labels units and counted portions', () => {
+    expect(unitLabel({ name: 'egg', grams: 50 })).toBe('1 egg');
+    expect(unitLabel({ name: '3 links', grams: 68 })).toBe('3 links');
+    expect(portionLabel(4, { name: 'egg', grams: 50 })).toBe('4 × egg');
+    expect(portionLabel(1.5, { name: '3 links', grams: 68 })).toBe('1.5 × 3 links');
   });
 });
 
@@ -83,17 +105,26 @@ describe('dailyTotals', () => {
 
 describe('entries', () => {
   it('snapshots nutrition at log time', () => {
-    const e = makeEntry(oats, 40, 1000, 'id1');
-    expect(e).toMatchObject({ id: 'id1', foodBarcode: '123', foodName: 'Oats', grams: 40, loggedAt: 1000 });
+    const e = makeEntry(oats, 40, 1000, 'id1', '1 × serving');
+    expect(e).toMatchObject({
+      id: 'id1',
+      foodBarcode: '123',
+      foodName: 'Oats',
+      grams: 40,
+      loggedAt: 1000,
+      portion: '1 × serving',
+    });
     expect(e.kcal).toBeCloseTo(152);
+    expect('portion' in makeEntry(oats, 40, 1000, 'id2')).toBe(false);
   });
 
-  it('rescales from its own snapshot when grams change', () => {
-    const e = rescaleEntry(makeEntry(oats, 40, 1000, 'id1'), 80);
+  it('rescales from its own snapshot when grams change, dropping the count', () => {
+    const e = rescaleEntry(makeEntry(oats, 40, 1000, 'id1', '1 × serving'), 80);
     expect(e.grams).toBe(80);
     expect(e.kcal).toBeCloseTo(304);
     expect(e.protein_g).toBeCloseTo(10.4);
     expect(e.loggedAt).toBe(1000);
+    expect(e.portion).toBeUndefined();
   });
 
   it('rescaling a zero-gram entry gives zeros, not NaN', () => {
@@ -152,19 +183,72 @@ describe('draftToFood', () => {
   it('needs name, kcal and protein', () => {
     expect(draftToFood({ name: 'X', per100g: { kcal: 1 } }, 'b')).toBeUndefined();
     expect(draftToFood({ per100g: { kcal: 1, protein_g: 1 } }, 'b')).toBeUndefined();
-    expect(draftToFood({ name: ' X ', per100g: { kcal: 1, protein_g: 0 }, servingSize_g: 0 }, 'b')).toEqual({
-      barcode: 'b',
-      name: 'X',
-      per100g: { kcal: 1, protein_g: 0 },
-    });
+    expect(
+      draftToFood({ name: ' X ', per100g: { kcal: 1, protein_g: 0 }, servings: [{ name: 'serving', grams: 0 }] }, 'b'),
+    ).toEqual({ barcode: 'b', name: 'X', per100g: { kcal: 1, protein_g: 0 } });
   });
 
-  it('keeps a serving name only alongside a serving size', () => {
+  it('keeps valid serving units', () => {
     const per100g = { kcal: 143, protein_g: 12.6 };
-    expect(draftToFood({ name: 'Eggs', per100g, servingSize_g: 50, servingName: ' egg ' }, 'b')).toMatchObject({
-      servingSize_g: 50,
-      servingName: 'egg',
+    expect(draftToFood({ name: 'Eggs', per100g, servings: [{ name: ' egg ', grams: 50 }] }, 'b')?.servings).toEqual([
+      { name: 'egg', grams: 50 },
+    ]);
+  });
+});
+
+describe('migrateFood', () => {
+  const base = { barcode: '1', name: 'Eggs', per100g: { kcal: 143, protein_g: 12.6 } };
+
+  it('turns the old serving and package sizes into units', () => {
+    expect(migrateFood({ ...base, servingSize_g: 50, servingName: 'egg', packageSize_g: 600 })).toEqual({
+      ...base,
+      servings: [
+        { name: 'egg', grams: 50 },
+        { name: 'package', grams: 600 },
+      ],
     });
-    expect(draftToFood({ name: 'Eggs', per100g, servingName: 'egg' }, 'b')?.servingName).toBeUndefined();
+    expect(migrateFood({ ...base, servingSize_g: 30 }).servings).toEqual([{ name: 'serving', grams: 30 }]);
+  });
+
+  it('leaves foods without legacy sizes, or already migrated, alone', () => {
+    expect(migrateFood(base)).toEqual(base);
+    expect(migrateFood(oats)).toEqual(oats);
+  });
+});
+
+describe('buildMeal', () => {
+  const chicken: Food = { barcode: 'c', name: 'Canned chicken', per100g: { kcal: 100, protein_g: 20 } };
+  const soup: Food = { barcode: 's', name: 'Lentil soup', per100g: { kcal: 60, protein_g: 4, carbs_g: 9 } };
+  const items = [makeItem(chicken, 300), makeItem(soup, 500)]; // 600 kcal, 80 g protein, 800 g
+
+  it('spreads the summed nutrition over the ingredient weight by default', () => {
+    const meal = buildMeal({ name: ' Chicken soup ', items }, 'meal-1');
+    expect(meal).toMatchObject({ barcode: 'meal-1', name: 'Chicken soup', custom: true, recipe: { items } });
+    expect(meal?.per100g.kcal).toBeCloseTo(75);
+    expect(meal?.per100g.protein_g).toBeCloseTo(10);
+    expect(meal?.servings).toBeUndefined();
+  });
+
+  it('uses the cooked weight when given', () => {
+    const meal = buildMeal({ name: 'Soup', items, cookedWeight_g: 600 }, 'm');
+    expect(meal?.per100g.kcal).toBeCloseTo(100);
+    expect(meal?.recipe?.cookedWeight_g).toBe(600);
+  });
+
+  it('adds a portion unit; all portions together equal the whole batch', () => {
+    const meal = buildMeal({ name: 'Soup', items, portions: 2 }, 'm')!;
+    expect(meal.servings).toEqual([{ name: 'portion', grams: 400 }]);
+    const portion = nutritionForGrams(meal, 400);
+    expect(portion.kcal * 2).toBeCloseTo(600);
+    expect(portion.protein_g * 2).toBeCloseTo(80);
+    // Same per-portion nutrition whatever the cooked weight is.
+    const cooked = buildMeal({ name: 'Soup', items, portions: 2, cookedWeight_g: 650 }, 'm')!;
+    expect(nutritionForGrams(cooked, cooked.servings![0].grams).kcal).toBeCloseTo(300);
+  });
+
+  it('needs a name and at least one ingredient with weight', () => {
+    expect(buildMeal({ name: '', items }, 'm')).toBeUndefined();
+    expect(buildMeal({ name: 'Soup', items: [] }, 'm')).toBeUndefined();
+    expect(buildMeal({ name: 'Soup', items: [makeItem(soup, 0)] }, 'm')).toBeUndefined();
   });
 });

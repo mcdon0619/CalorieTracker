@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { lookup, parseProduct, type LookupDeps } from './off';
+import { lookup, mergeDraft, parseProduct, parseServings, type LookupDeps } from './off';
 import type { Food } from './types';
 
 const product = {
@@ -35,8 +35,10 @@ describe('parseProduct', () => {
       name: 'Nutella',
       brand: 'Ferrero',
       per100g: { kcal: 539, protein_g: 6.3, carbs_g: 57.5, fat_g: 30.9, sugar_g: 56.3, sodium_mg: 42.8 },
-      servingSize_g: 15,
-      packageSize_g: 400,
+      servings: [
+        { name: 'serving', grams: 15 },
+        { name: 'package', grams: 400 },
+      ],
     });
   });
 
@@ -57,8 +59,81 @@ describe('parseProduct', () => {
 
   it('ignores reference weights that are not in grams/ml', () => {
     const d = parseProduct({ serving_quantity: 1, serving_quantity_unit: 'oz', product_quantity: 0 }, '1');
-    expect(d.servingSize_g).toBeUndefined();
-    expect(d.packageSize_g).toBeUndefined();
+    expect(d.servings).toBeUndefined();
+  });
+});
+
+describe('parseServings', () => {
+  const units = (serving_size: string, serving_quantity?: number) => parseServings({ serving_size, serving_quantity });
+
+  it('names a single-piece serving after the piece', () => {
+    expect(units('1 egg (50g)', 50)).toEqual([{ name: 'egg', grams: 50 }]);
+  });
+
+  it('keeps the label serving as default and derives a single piece', () => {
+    const [label, single] = units('3 links (68 g)', 68);
+    expect(label).toEqual({ name: '3 links', grams: 68 });
+    expect(single.name).toBe('link');
+    expect(single.grams).toBeCloseTo(22.667);
+  });
+
+  it('falls back to a plain "serving" when the text is only a weight', () => {
+    expect(units('68 g', 68)).toEqual([{ name: 'serving', grams: 68 }]);
+    expect(units('', 30)).toEqual([{ name: 'serving', grams: 30 }]);
+  });
+
+  it('reads the weight from the text when the quantity field is missing', () => {
+    expect(units('2 tbsp (32,5 g)')[0]).toEqual({ name: '2 tbsp', grams: 32.5 });
+    expect(units('1 cup (240 ml)')).toEqual([{ name: 'cup', grams: 240 }]);
+  });
+
+  it('finds the label inside the parentheses too', () => {
+    expect(units('30 g (2 biscuits)', 30).map((u) => u.name)).toEqual(['2 biscuits', 'biscuit']);
+  });
+
+  it('does not derive a piece from fractional or uncounted labels', () => {
+    expect(units('1/2 cup (120g)', 120)).toEqual([{ name: '1/2 cup', grams: 120 }]);
+    expect(units('bar (45 g)', 45)).toEqual([{ name: 'bar', grams: 45 }]);
+  });
+
+  it('gives no units without any weight', () => {
+    expect(units('3 links')).toEqual([]);
+    expect(parseServings({})).toEqual([]);
+  });
+
+  it('adds the package unless it is the same as the serving', () => {
+    expect(parseServings({ serving_quantity: 330, product_quantity: 330 })).toEqual([{ name: 'serving', grams: 330 }]);
+    expect(parseServings({ product_quantity: '340', product_quantity_unit: 'g' })).toEqual([
+      { name: 'package', grams: 340 },
+    ]);
+  });
+});
+
+describe('mergeDraft', () => {
+  it('prefers fresh OFF data and keeps the units the user added', () => {
+    const old = {
+      barcode: '1',
+      name: 'My sausages',
+      per100g: { kcal: 300, protein_g: 15, fat_g: 25 },
+      servings: [
+        { name: 'serving', grams: 68 },
+        { name: 'half pack', grams: 170 },
+      ],
+    };
+    const fresh = {
+      barcode: '1',
+      per100g: { kcal: 310 },
+      servings: [
+        { name: '3 links', grams: 68 },
+        { name: 'link', grams: 68 / 3 },
+        { name: 'serving', grams: 70 },
+      ],
+    };
+    const merged = mergeDraft(old, fresh);
+    expect(merged.name).toBe('My sausages');
+    expect(merged.per100g).toEqual({ kcal: 310, protein_g: 15, fat_g: 25 });
+    expect(merged.servings?.map((u) => u.name)).toEqual(['3 links', 'link', 'serving', 'half pack']);
+    expect(merged.servings?.[2].grams).toBe(70);
   });
 });
 

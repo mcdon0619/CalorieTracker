@@ -1,4 +1,4 @@
-import type { Food, FoodDraft, Goals, LogEntry, Nutrition, Per100g } from './types';
+import type { Food, FoodDraft, Goals, LogEntry, Nutrition, Per100g, RecipeItem, ServingUnit } from './types';
 
 const NUTRIENTS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', 'sugar_g', 'fiber_g', 'sodium_mg'] as const;
 
@@ -30,26 +30,25 @@ export function nutritionForGrams(food: Pick<Food, 'per100g'>, grams: number): N
   return out;
 }
 
-export type Shortcut = { label: string; grams: number };
-
-// Serving/package shortcuts, only for reference weights the food actually has.
-export function portionShortcuts(food: Pick<Food, 'servingSize_g' | 'packageSize_g'>): Shortcut[] {
-  const out: Shortcut[] = [];
-  if (positive(food.servingSize_g)) {
-    out.push(
-      { label: '½ serving', grams: food.servingSize_g / 2 },
-      { label: '1 serving', grams: food.servingSize_g },
-      { label: '2 servings', grams: food.servingSize_g * 2 },
-    );
-  }
-  if (positive(food.packageSize_g)) {
-    out.push(
-      { label: '½ package', grams: food.packageSize_g / 2 },
-      { label: 'Whole package', grams: food.packageSize_g },
-    );
+// The serving units a food can be counted in: only those with a name and a real weight.
+// No reference weight means no unit; grams always works.
+export function validServings(food: Pick<FoodDraft, 'servings'>): ServingUnit[] {
+  const out: ServingUnit[] = [];
+  for (const u of Array.isArray(food.servings) ? food.servings : []) {
+    const name = typeof u?.name === 'string' ? u.name.trim() : '';
+    if (!name || !positive(u.grams)) continue;
+    if (out.some((o) => o.name.toLowerCase() === name.toLowerCase())) continue;
+    out.push({ name, grams: u.grams });
   }
   return out;
 }
+
+// "egg" -> "1 egg"; "3 links" stays "3 links".
+export const unitLabel = (unit: ServingUnit) => (/^\d/.test(unit.name) ? unit.name : `1 ${unit.name}`);
+
+// How a counted portion is shown in the log: "4 × egg".
+export const portionLabel = (count: number, unit: ServingUnit) =>
+  `${Math.round(count * 100) / 100} × ${unit.name}`;
 
 export function dailyTotals(entries: readonly Partial<Nutrition>[]): Nutrition {
   const out = { ...ZERO };
@@ -57,22 +56,27 @@ export function dailyTotals(entries: readonly Partial<Nutrition>[]): Nutrition {
   return out;
 }
 
-// Snapshot the nutrition at log time; the entry never reads the food again.
-export function makeEntry(food: Food, grams: number, loggedAt: number, id: string): LogEntry {
-  return {
-    id,
+// An amount of a food with its nutrition snapshotted; it never reads the food again.
+export function makeItem(food: Food, grams: number, portion?: string): RecipeItem {
+  const item: RecipeItem = {
     foodBarcode: food.barcode,
     foodName: food.name,
     grams,
     ...nutritionForGrams(food, grams),
-    loggedAt,
   };
+  if (portion) item.portion = portion;
+  return item;
+}
+
+export function makeEntry(food: Food, grams: number, loggedAt: number, id: string, portion?: string): LogEntry {
+  return { id, ...makeItem(food, grams, portion), loggedAt };
 }
 
 // Change an entry's grams by scaling its own snapshot (not the current food data).
 export function rescaleEntry(entry: LogEntry, grams: number): LogEntry {
   const f = positive(entry.grams) ? n(grams) / entry.grams : 0;
   const out = { ...entry, grams };
+  delete out.portion; // the count it was entered with no longer applies
   for (const k of NUTRIENTS) out[k] = n(entry[k]) * f;
   return out;
 }
@@ -124,10 +128,46 @@ export function draftToFood(draft: FoodDraft, barcode: string): Food | undefined
   if (!Number.isFinite(p.kcal) || !Number.isFinite(p.protein_g)) return undefined;
   const food: Food = { barcode, name, per100g: { ...p, kcal: p.kcal, protein_g: p.protein_g } };
   if (draft.brand?.trim()) food.brand = draft.brand.trim();
-  if (positive(draft.servingSize_g)) {
-    food.servingSize_g = draft.servingSize_g;
-    if (draft.servingName?.trim()) food.servingName = draft.servingName.trim();
+  const servings = validServings(draft);
+  if (servings.length) food.servings = servings;
+  return food;
+}
+
+type LegacyFood = Food & { servingSize_g?: number; servingName?: string; packageSize_g?: number };
+
+// Foods saved before serving units existed had one serving size and a package size.
+export function migrateFood(stored: LegacyFood): Food {
+  const { servingSize_g, servingName, packageSize_g, ...food } = stored;
+  if (food.servings) return food;
+  const servings = validServings({
+    servings: [
+      { name: servingName?.trim() || 'serving', grams: servingSize_g as number },
+      { name: 'package', grams: packageSize_g as number },
+    ],
+  });
+  return servings.length ? { ...food, servings } : food;
+}
+
+export type MealInput = { name: string; items: RecipeItem[]; cookedWeight_g?: number; portions?: number };
+
+// A batch-cooked meal becomes one food: the ingredients' summed nutrition spread over the
+// finished weight (the cooked weight if given, otherwise the ingredients' combined weight).
+export function buildMeal(input: MealInput, barcode: string): Food | undefined {
+  const name = input.name.trim();
+  const rawWeight = input.items.reduce((sum, i) => sum + n(i.grams), 0);
+  const weight = positive(input.cookedWeight_g) ? input.cookedWeight_g : rawWeight;
+  if (!name || input.items.length === 0 || !positive(weight)) return undefined;
+
+  const totals = dailyTotals(input.items);
+  const per100g = { ...ZERO };
+  for (const k of NUTRIENTS) per100g[k] = (totals[k] * 100) / weight;
+
+  const recipe: NonNullable<Food['recipe']> = { items: input.items };
+  if (positive(input.cookedWeight_g)) recipe.cookedWeight_g = input.cookedWeight_g;
+  const food: Food = { barcode, name, per100g, custom: true, recipe };
+  if (positive(input.portions)) {
+    recipe.portions = input.portions;
+    food.servings = [{ name: 'portion', grams: weight / input.portions }];
   }
-  if (positive(draft.packageSize_g)) food.packageSize_g = draft.packageSize_g;
   return food;
 }

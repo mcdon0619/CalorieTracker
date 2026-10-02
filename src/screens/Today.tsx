@@ -130,7 +130,11 @@ export default function Today(p: Props) {
               <button className="entry" onClick={() => setEditing({ id: e.id, grams: dec(e.grams) })}>
                 <span className="name">
                   {e.foodName}
-                  <span className="muted"> · {dec(e.grams)} g</span>
+                  <span className="muted">
+                    {' · '}
+                    {e.portion ? `${e.portion} · ` : ''}
+                    {dec(e.grams)} g
+                  </span>
                 </span>
                 <span className="nums">
                   <strong>{dec(e.protein_g)} g</strong>

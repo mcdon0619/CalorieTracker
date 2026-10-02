@@ -4,13 +4,15 @@ import type { Food } from '../types';
 
 type Props = {
   foods: Food[];
+  building: boolean; // picking an ingredient for a meal
   onPick: (food: Food) => void;
   onEdit: (food: Food) => void;
-  onManual: () => void;
+  onNewFood: () => void;
+  onNewMeal: () => void;
   onBack: () => void;
 };
 
-export default function Foods({ foods, onPick, onEdit, onManual, onBack }: Props) {
+export default function Foods({ foods, building, onPick, onEdit, onNewFood, onNewMeal, onBack }: Props) {
   const [query, setQuery] = useState('');
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -23,9 +25,18 @@ export default function Foods({ foods, onPick, onEdit, onManual, onBack }: Props
     <main className="screen">
       <header className="bar">
         <button onClick={onBack}>‹ Back</button>
-        <h1>My foods</h1>
-        <button onClick={onManual}>+ New</button>
+        <h1>{building ? 'Pick ingredient' : 'My foods'}</h1>
       </header>
+      <div className="row">
+        <button className="grow" onClick={onNewFood}>
+          + New food
+        </button>
+        {!building && (
+          <button className="grow" onClick={onNewMeal}>
+            + New meal
+          </button>
+        )}
+      </div>
       <input placeholder="Search" aria-label="Search foods" value={query} onChange={(e) => setQuery(e.target.value)} />
       <ul className="list">
         {shown.length === 0 && (
@@ -36,16 +47,21 @@ export default function Foods({ foods, onPick, onEdit, onManual, onBack }: Props
             <button className="entry grow" onClick={() => onPick(f)}>
               <span className="name">
                 {f.name}
-                {f.brand && <span className="muted"> · {f.brand}</span>}
+                <span className="muted">
+                  {f.brand && ` · ${f.brand}`}
+                  {f.recipe && ' · meal'}
+                </span>
               </span>
               <span className="nums">
                 <strong>{dec(f.per100g.protein_g)} g</strong>
                 <span className="muted">{int(f.per100g.kcal)} kcal /100g</span>
               </span>
             </button>
-            <button aria-label={`Edit ${f.name}`} onClick={() => onEdit(f)}>
-              ✎
-            </button>
+            {!(building && f.recipe) && (
+              <button aria-label={`Edit ${f.name}`} onClick={() => onEdit(f)}>
+                ✎
+              </button>
+            )}
           </li>
         ))}
       </ul>

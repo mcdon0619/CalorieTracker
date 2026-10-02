@@ -273,6 +273,23 @@ button.link {
   color: var(--text);
 }
 
+.field .grams {
+  width: 5.5em;
+  flex: none;
+}
+
+div.entry {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+}
+
+.chips button.on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  font-weight: 700;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;

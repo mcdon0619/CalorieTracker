@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Backup } from './backup';
 import { dayKey, formatDay, timestampForDay } from './days';
 import * as db from './db';
-import { makeEntry, normalizeBarcode, rescaleEntry } from './nutrition';
-import { fetchJson, lookup } from './off';
+import { dec2 } from './format';
+import { makeEntry, makeItem, normalizeBarcode, rescaleEntry } from './nutrition';
+import { fetchDraft, fetchJson, lookup, mergeDraft } from './off';
 import Foods from './screens/Foods';
 import ManualAdd from './screens/ManualAdd';
+import Meal, { type MealDraft } from './screens/Meal';
 import Portion from './screens/Portion';
 import Scan from './screens/Scan';
 import Settings from './screens/Settings';
@@ -18,10 +20,12 @@ type Screen =
   | { name: 'lookup'; barcode: string; error?: string }
   | { name: 'foods' }
   | { name: 'portion'; food: Food }
-  | { name: 'manual'; draft: FoodDraft; notice?: string }
+  | { name: 'manual'; draft: FoodDraft; notice?: string; rev?: number }
+  | { name: 'meal' }
   | { name: 'settings' };
 
 const HOME: Screen = { name: 'today' };
+const isScannedBarcode = (barcode: string | undefined): barcode is string => !!barcode && /^\d+$/.test(barcode);
 
 export default function App() {
   const [data, setData] = useState<db.AppData | null>(null);
@@ -29,6 +33,8 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>(HOME);
   const [now, setNow] = useState(() => Date.now());
   const [pickedDay, setPickedDay] = useState<string | null>(null); // null = today
+  // While a meal is being built, picked portions go into it instead of the log.
+  const [meal, setMeal] = useState<MealDraft | null>(null);
 
   const reload = useCallback(
     () => db.loadAll().then(setData, (e) => setLoadError(e instanceof Error ? e.message : String(e))),
@@ -65,9 +71,20 @@ export default function App() {
     setData((d) => d && { ...d, foods: [...d.foods.filter((f) => f.barcode !== food.barcode), food] });
   };
 
-  const addEntry = async (food: Food, grams: number) => {
+  // Saving an edited food keeps its place in the "my foods" order.
+  const saveEdited = (food: Food) => {
+    const lastUsedAt = data.foods.find((f) => f.barcode === food.barcode)?.lastUsedAt;
+    return saveFood(lastUsedAt ? { ...food, lastUsedAt } : food);
+  };
+
+  const addPortion = async (food: Food, grams: number, portion?: string) => {
+    if (meal) {
+      setMeal({ ...meal, items: [...meal.items, makeItem(food, grams, portion)] });
+      setScreen({ name: 'meal' });
+      return;
+    }
     const at = Date.now();
-    const entry = makeEntry(food, grams, timestampForDay(day, at), crypto.randomUUID());
+    const entry = makeEntry(food, grams, timestampForDay(day, at), crypto.randomUUID(), portion);
     await db.putEntry(entry);
     setData((d) => d && { ...d, log: [...d.log, entry] });
     await saveFood({ ...food, lastUsedAt: at });
@@ -120,7 +137,35 @@ export default function App() {
     }
   };
 
-  const back = () => setScreen(HOME);
+  // Re-read a scanned food from Open Food Facts into the edit form (nothing is saved until Save).
+  const refreshDraft = async (draft: FoodDraft, barcode: string) => {
+    const rev = Date.now();
+    try {
+      const fresh = await fetchDraft(barcode, fetchJson);
+      setScreen(
+        fresh
+          ? { name: 'manual', rev, draft: mergeDraft(draft, fresh), notice: 'Refreshed. Check the values and save.' }
+          : { name: 'manual', rev, draft, notice: 'Open Food Facts has no product with this barcode.' },
+      );
+    } catch {
+      setScreen({ name: 'manual', rev, draft, notice: 'Refresh failed. You may be offline.' });
+    }
+  };
+
+  const startMeal = (food?: Food) => {
+    setMeal({
+      barcode: food?.barcode,
+      name: food?.name ?? '',
+      items: food?.recipe?.items ?? [],
+      cooked: food?.recipe?.cookedWeight_g ? dec2(food.recipe.cookedWeight_g) : '',
+      portions: food?.recipe?.portions ? dec2(food.recipe.portions) : '',
+    });
+    setScreen({ name: 'meal' });
+  };
+
+  const editFood = (food: Food) => (food.recipe ? startMeal(food) : setScreen({ name: 'manual', draft: food }));
+
+  const back = () => setScreen(meal ? { name: 'meal' } : HOME);
 
   switch (screen.name) {
     case 'today':
@@ -168,32 +213,61 @@ export default function App() {
       return (
         <Foods
           foods={data.foods}
+          building={!!meal}
           onPick={(food) => setScreen({ name: 'portion', food })}
-          onEdit={(food) => setScreen({ name: 'manual', draft: food })}
-          onManual={() => setScreen({ name: 'manual', draft: {} })}
+          onEdit={editFood}
+          onNewFood={() => setScreen({ name: 'manual', draft: {} })}
+          onNewMeal={() => startMeal()}
           onBack={back}
         />
       );
-    case 'portion':
+    case 'portion': {
+      const { food } = screen;
       return (
         <Portion
-          food={screen.food}
-          dayLabel={dayLabel}
-          onAdd={(grams) => addEntry(screen.food, grams)}
-          onEdit={() => setScreen({ name: 'manual', draft: screen.food })}
+          key={food.barcode}
+          food={food}
+          addLabel={meal ? 'Add to meal' : dayLabel === 'Today' ? 'Add to log' : `Add to ${dayLabel}`}
+          onAdd={(grams, portion) => addPortion(food, grams, portion)}
+          onEdit={meal && food.recipe ? undefined : () => editFood(food)}
           onBack={back}
         />
       );
-    case 'manual':
+    }
+    case 'manual': {
+      const { draft } = screen;
+      const barcode = draft.barcode;
       return (
         <ManualAdd
-          draft={screen.draft}
+          key={screen.rev}
+          draft={draft}
           notice={screen.notice}
           onSave={async (food) => {
-            await saveFood(food);
+            await saveEdited(food);
             setScreen({ name: 'portion', food });
           }}
+          onRefresh={isScannedBarcode(barcode) ? () => refreshDraft(draft, barcode) : undefined}
           onBack={back}
+        />
+      );
+    }
+    case 'meal':
+      if (!meal) return null;
+      return (
+        <Meal
+          draft={meal}
+          onChange={setMeal}
+          onPickFood={() => setScreen({ name: 'foods' })}
+          onScan={() => setScreen({ name: 'scan' })}
+          onSave={async (food) => {
+            await saveEdited(food);
+            setMeal(null);
+            setScreen({ name: 'portion', food });
+          }}
+          onCancel={() => {
+            setMeal(null);
+            setScreen({ name: 'foods' });
+          }}
         />
       );
     case 'settings':

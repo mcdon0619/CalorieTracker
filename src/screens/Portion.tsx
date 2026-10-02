@@ -1,43 +1,57 @@
 import { useState } from 'react';
-import { dec, int, parseNum } from '../format';
-import { nutritionForGrams, portionShortcuts } from '../nutrition';
+import { dec, dec2, int, parseNum } from '../format';
+import { nutritionForGrams, portionLabel, unitLabel, validServings } from '../nutrition';
 import type { Food } from '../types';
 
 type Props = {
   food: Food;
-  dayLabel: string;
-  onAdd: (grams: number) => void;
-  onEdit: () => void;
+  addLabel: string;
+  onAdd: (grams: number, portion?: string) => void;
+  onEdit?: () => void;
   onBack: () => void;
 };
 
-export default function Portion({ food, dayLabel, onAdd, onEdit, onBack }: Props) {
-  const serving = food.servingSize_g && food.servingSize_g > 0 ? food.servingSize_g : undefined;
-  const [grams, setGrams] = useState(serving ? dec(serving) : '');
-  const [count, setCount] = useState(serving ? '1' : '');
-  // Count and grams are two views of the same amount; grams is what gets logged.
-  const changeGrams = (text: string) => {
-    setGrams(text);
-    const g = parseNum(text);
-    if (serving) setCount(g === undefined ? '' : String(Math.round((g / serving) * 100) / 100));
-  };
-  const changeCount = (text: string) => {
-    setCount(text);
-    const c = parseNum(text);
-    if (serving) setGrams(c === undefined ? '' : dec(c * serving));
-  };
-  const step = (delta: number) => changeCount(String(Math.max(0, (parseNum(count) ?? 0) + delta)));
-  const amount = parseNum(grams);
+const GRAMS_ONLY = -1;
+
+export default function Portion({ food, addLabel, onAdd, onEdit, onBack }: Props) {
+  const units = validServings(food);
+  const [unitIndex, setUnitIndex] = useState(units.length ? 0 : GRAMS_ONLY);
+  const unit = units[unitIndex];
+  const [count, setCount] = useState(unit ? '1' : '');
+  const [grams, setGrams] = useState(unit ? dec(unit.grams) : '');
+  // Count and grams are two views of the same amount; whichever was typed last is the truth.
+  const [typed, setTyped] = useState<'count' | 'grams'>(unit ? 'count' : 'grams');
+
+  const counted = typed === 'count' && unit ? parseNum(count) : undefined;
+  const amount = counted !== undefined && unit ? counted * unit.grams : parseNum(grams);
   const valid = amount !== undefined && amount > 0;
   const preview = nutritionForGrams(food, amount ?? 0);
-  const shortcuts = portionShortcuts(food);
+
+  const changeCount = (text: string, perUnit = unit?.grams) => {
+    setCount(text);
+    setTyped('count');
+    const c = parseNum(text);
+    if (perUnit) setGrams(c === undefined ? '' : dec(c * perUnit));
+  };
+  const changeGrams = (text: string) => {
+    setGrams(text);
+    setTyped('grams');
+    const g = parseNum(text);
+    if (unit) setCount(g === undefined ? '' : dec2(g / unit.grams));
+  };
+  const pickUnit = (index: number) => {
+    setUnitIndex(index);
+    if (index === GRAMS_ONLY) setTyped('grams');
+    else changeCount(String(parseNum(count) ?? 1), units[index].grams);
+  };
+  const step = (delta: number) => changeCount(String(Math.max(0, (parseNum(count) ?? 0) + delta)));
 
   return (
     <main className="screen">
       <header className="bar">
         <button onClick={onBack}>‹ Back</button>
         <h1>Portion</h1>
-        <button onClick={onEdit}>Edit food</button>
+        {onEdit && <button onClick={onEdit}>Edit food</button>}
       </header>
 
       <section className="card">
@@ -51,12 +65,37 @@ export default function Portion({ food, dayLabel, onAdd, onEdit, onBack }: Props
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (valid) onAdd(amount);
+          if (valid) onAdd(amount, counted !== undefined && unit ? portionLabel(counted, unit) : undefined);
         }}
       >
-        {serving && (
+        {units.length > 0 && (
+          <div className="chips" role="group" aria-label="Serving size">
+            {units.map((u, i) => (
+              <button
+                type="button"
+                key={u.name}
+                className={i === unitIndex ? 'on' : ''}
+                aria-pressed={i === unitIndex}
+                onClick={() => pickUnit(i)}
+              >
+                {unitLabel(u)}
+                <span className="muted"> {dec(u.grams)} g</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              className={unitIndex === GRAMS_ONLY ? 'on' : ''}
+              aria-pressed={unitIndex === GRAMS_ONLY}
+              onClick={() => pickUnit(GRAMS_ONLY)}
+            >
+              grams
+            </button>
+          </div>
+        )}
+
+        {unit && (
           <label className="field">
-            How many (1 {food.servingName ?? 'serving'} = {dec(serving)} g)
+            How many × {unitLabel(unit)}
             <div className="row">
               <button type="button" aria-label="One less" onClick={() => step(-1)}>
                 −
@@ -75,19 +114,14 @@ export default function Portion({ food, dayLabel, onAdd, onEdit, onBack }: Props
         )}
         <label className="field">
           Amount (g)
-          <input inputMode="decimal" autoFocus={!serving} value={grams} onChange={(e) => changeGrams(e.target.value)} />
+          <input
+            key={unit ? 'with-unit' : 'grams-only'}
+            inputMode="decimal"
+            autoFocus={!unit}
+            value={grams}
+            onChange={(e) => changeGrams(e.target.value)}
+          />
         </label>
-
-        {shortcuts.length > 0 && (
-          <div className="chips">
-            {shortcuts.map((s) => (
-              <button type="button" key={s.label} onClick={() => changeGrams(dec(s.grams))}>
-                {s.label}
-                <span className="muted"> {dec(s.grams)} g</span>
-              </button>
-            ))}
-          </div>
-        )}
 
         <section className="card protein">
           <div className="hero">
@@ -98,7 +132,7 @@ export default function Portion({ food, dayLabel, onAdd, onEdit, onBack }: Props
         </section>
 
         <button className="primary scan" type="submit" disabled={!valid}>
-          Add to {dayLabel === 'Today' ? 'log' : dayLabel}
+          {addLabel}
         </button>
       </form>
     </main>

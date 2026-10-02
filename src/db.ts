@@ -1,5 +1,6 @@
 import { clear, createStore, del, entries, set, setMany } from 'idb-keyval';
 import type { Backup } from './backup';
+import { migrateFood } from './nutrition';
 import type { Food, Goals, LogEntry, Recipe } from './types';
 
 // One IndexedDB store; keys are namespaced: food:{barcode}, log:{id}, recipe:{id}, goals.
@@ -13,7 +14,7 @@ export async function loadAll(): Promise<AppData> {
   const data: AppData = { foods: [], log: [], goals: DEFAULT_GOALS, recipes: [] };
   for (const [key, value] of await entries(store)) {
     if (typeof key !== 'string') continue;
-    if (key.startsWith('food:')) data.foods.push(value as Food);
+    if (key.startsWith('food:')) data.foods.push(migrateFood(value as Food));
     else if (key.startsWith('log:')) data.log.push(value as LogEntry);
     else if (key.startsWith('recipe:')) data.recipes.push(value as Recipe);
     else if (key === 'goals') data.goals = value as Goals;
