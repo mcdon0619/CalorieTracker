@@ -1,0 +1,308 @@
+:root {
+  --bg: #101412;
+  --card: #1a201d;
+  --line: #2c3530;
+  --text: #eef2ef;
+  --muted: #94a39a;
+  --accent: #4ade80;
+  --accent-text: #06270f;
+  --bad: #f87171;
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 17px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f7f5;
+    --card: #ffffff;
+    --line: #d5dcd7;
+    --text: #131815;
+    --muted: #5d6b63;
+    --accent: #15803d;
+    --accent-text: #ffffff;
+    --bad: #b91c1c;
+    color-scheme: light;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.screen {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 12px 16px calc(24px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bar h1 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.15rem;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+  min-height: 48px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  padding: 0 14px;
+}
+
+input {
+  width: 100%;
+  min-width: 0;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.4;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+}
+
+button.scan {
+  min-height: 64px;
+  font-size: 1.3rem;
+}
+
+button.danger {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+button.link {
+  min-height: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card.bad {
+  border-color: var(--bad);
+}
+
+.card.bad .big {
+  color: var(--bad);
+}
+
+.card.good {
+  border-color: var(--accent);
+}
+
+.label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.hero {
+  font-size: 3.6rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero .unit {
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.big {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.sub {
+  font-size: 1.05rem;
+}
+
+.card.good .sub {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.track {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.empty {
+  padding: 16px 0;
+  text-align: center;
+}
+
+.entry {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  text-align: left;
+}
+
+.entry .name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.nums {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.editing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.field input {
+  color: var(--text);
+  font-size: 1.05rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+details {
+  display: flex;
+  flex-direction: column;
+}
+
+details[open] {
+  gap: 12px;
+}
+
+summary {
+  padding: 12px 0;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+details .field {
+  margin-bottom: 12px;
+}
+
+.notice {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.notice.bad {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.camera {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 14px;
+  background: #000;
+}
