@@ -158,4 +158,13 @@ describe('draftToFood', () => {
       per100g: { kcal: 1, protein_g: 0 },
     });
   });
+
+  it('keeps a serving name only alongside a serving size', () => {
+    const per100g = { kcal: 143, protein_g: 12.6 };
+    expect(draftToFood({ name: 'Eggs', per100g, servingSize_g: 50, servingName: ' egg ' }, 'b')).toMatchObject({
+      servingSize_g: 50,
+      servingName: 'egg',
+    });
+    expect(draftToFood({ name: 'Eggs', per100g, servingName: 'egg' }, 'b')?.servingName).toBeUndefined();
+  });
 });

@@ -14,6 +14,7 @@ export type Food = {
   brand?: string;
   per100g: Per100g;
   servingSize_g?: number;
+  servingName?: string; // what one serving is called, e.g. "egg"; only meaningful with servingSize_g
   packageSize_g?: number;
   custom?: boolean;
   lastUsedAt?: number; // epoch ms; orders the "my foods" quick-pick
@@ -26,6 +27,7 @@ export type FoodDraft = {
   brand?: string;
   per100g?: Partial<Per100g>;
   servingSize_g?: number;
+  servingName?: string;
   packageSize_g?: number;
 };
 

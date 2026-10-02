@@ -30,6 +30,7 @@ export default function ManualAdd({ draft, notice, onSave, onBack }: Props) {
     Object.fromEntries(NUTRIENT_FIELDS.map((f) => [f.key, show(draft.per100g?.[f.key])])),
   );
   const [serving, setServing] = useState(show(draft.servingSize_g));
+  const [servingName, setServingName] = useState(draft.servingName ?? '');
   const [pack, setPack] = useState(show(draft.packageSize_g));
 
   const basisGrams = parseNum(basis);
@@ -44,6 +45,7 @@ export default function ManualAdd({ draft, notice, onSave, onBack }: Props) {
       brand,
       per100g: toPer100g(entered, basisGrams ?? 0),
       servingSize_g: parseNum(serving),
+      servingName,
       packageSize_g: parseNum(pack),
     },
     draft.barcode ?? `custom-${crypto.randomUUID()}`,
@@ -88,8 +90,12 @@ export default function ManualAdd({ draft, notice, onSave, onBack }: Props) {
         ))}
 
         <label className="field">
-          Serving size (g, optional)
+          Weight of one serving / piece (g, optional)
           <input inputMode="decimal" value={serving} onChange={(e) => setServing(e.target.value)} />
+        </label>
+        <label className="field">
+          One serving is called (optional, e.g. egg, slice)
+          <input value={servingName} onChange={(e) => setServingName(e.target.value)} />
         </label>
 
         <details>

@@ -124,7 +124,10 @@ export function draftToFood(draft: FoodDraft, barcode: string): Food | undefined
   if (!Number.isFinite(p.kcal) || !Number.isFinite(p.protein_g)) return undefined;
   const food: Food = { barcode, name, per100g: { ...p, kcal: p.kcal, protein_g: p.protein_g } };
   if (draft.brand?.trim()) food.brand = draft.brand.trim();
-  if (positive(draft.servingSize_g)) food.servingSize_g = draft.servingSize_g;
+  if (positive(draft.servingSize_g)) {
+    food.servingSize_g = draft.servingSize_g;
+    if (draft.servingName?.trim()) food.servingName = draft.servingName.trim();
+  }
   if (positive(draft.packageSize_g)) food.packageSize_g = draft.packageSize_g;
   return food;
 }

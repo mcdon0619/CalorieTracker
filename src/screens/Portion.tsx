@@ -12,7 +12,21 @@ type Props = {
 };
 
 export default function Portion({ food, dayLabel, onAdd, onEdit, onBack }: Props) {
-  const [grams, setGrams] = useState(food.servingSize_g ? dec(food.servingSize_g) : '');
+  const serving = food.servingSize_g && food.servingSize_g > 0 ? food.servingSize_g : undefined;
+  const [grams, setGrams] = useState(serving ? dec(serving) : '');
+  const [count, setCount] = useState(serving ? '1' : '');
+  // Count and grams are two views of the same amount; grams is what gets logged.
+  const changeGrams = (text: string) => {
+    setGrams(text);
+    const g = parseNum(text);
+    if (serving) setCount(g === undefined ? '' : String(Math.round((g / serving) * 100) / 100));
+  };
+  const changeCount = (text: string) => {
+    setCount(text);
+    const c = parseNum(text);
+    if (serving) setGrams(c === undefined ? '' : dec(c * serving));
+  };
+  const step = (delta: number) => changeCount(String(Math.max(0, (parseNum(count) ?? 0) + delta)));
   const amount = parseNum(grams);
   const valid = amount !== undefined && amount > 0;
   const preview = nutritionForGrams(food, amount ?? 0);
@@ -40,15 +54,34 @@ export default function Portion({ food, dayLabel, onAdd, onEdit, onBack }: Props
           if (valid) onAdd(amount);
         }}
       >
+        {serving && (
+          <label className="field">
+            How many (1 {food.servingName ?? 'serving'} = {dec(serving)} g)
+            <div className="row">
+              <button type="button" aria-label="One less" onClick={() => step(-1)}>
+                −
+              </button>
+              <input
+                className="grow count"
+                inputMode="decimal"
+                value={count}
+                onChange={(e) => changeCount(e.target.value)}
+              />
+              <button type="button" aria-label="One more" onClick={() => step(1)}>
+                +
+              </button>
+            </div>
+          </label>
+        )}
         <label className="field">
           Amount (g)
-          <input inputMode="decimal" autoFocus value={grams} onChange={(e) => setGrams(e.target.value)} />
+          <input inputMode="decimal" autoFocus={!serving} value={grams} onChange={(e) => changeGrams(e.target.value)} />
         </label>
 
         {shortcuts.length > 0 && (
           <div className="chips">
             {shortcuts.map((s) => (
-              <button type="button" key={s.label} onClick={() => setGrams(dec(s.grams))}>
+              <button type="button" key={s.label} onClick={() => changeGrams(dec(s.grams))}>
                 {s.label}
                 <span className="muted"> {dec(s.grams)} g</span>
               </button>

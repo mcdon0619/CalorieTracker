@@ -261,6 +261,18 @@ button.link {
   font-size: 1.05rem;
 }
 
+.field .count {
+  text-align: center;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.field .row button {
+  min-width: 56px;
+  font-size: 1.4rem;
+  color: var(--text);
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
